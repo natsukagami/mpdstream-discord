@@ -205,4 +205,7 @@ client.login(config.discord.token).then(async () => {
   const f = new Dispatch(alwaysJoin);
 
   client.on("message", f.handleMessage.bind(f));
+}).catch(e => {
+  console.log(e);
+  process.exit(1);
 });
