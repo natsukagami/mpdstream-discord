@@ -69,8 +69,8 @@ export default class MPD extends EventEmitter {
         // console.log(song);
         // console.log(status);
         resolve({
-          title: song.Title,
-          artist: song.Artist,
+          title: song.Title || song.File || "?",
+          artist: song.Artist || "?",
           album: song.Album,
           playing: true
         });
