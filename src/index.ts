@@ -38,7 +38,7 @@ class Dispatch {
     try {
       const u = m.member;
 
-      if (!u.voiceChannel || !u.voiceChannel.speakable) {
+      if (!u?.voice.channel?.speakable) {
         await m.reply("Please join a channel that I can speak in.");
         return;
       }
@@ -48,9 +48,9 @@ class Dispatch {
         current.disconnect();
         this.connections.delete(u.guild);
       }
-      this.channels.set(u.guild, u.voiceChannel);
+      this.channels.set(u.guild, u.voice.channel);
       await this.update();
-      await m.reply("Joined **" + u.voiceChannel.name + "**");
+      await m.reply("Joined **" + u.voice.channel.name + "**");
     } catch (e) {
       throw e;
     }
@@ -58,6 +58,7 @@ class Dispatch {
 
   async leave(m: Discord.Message) {
     const u = m.member;
+    if (!u) return;
 
     const current = this.connections.get(u.guild);
     if (current !== undefined) {
@@ -102,39 +103,40 @@ class Dispatch {
   }
 
   createBroadcast(): Discord.VoiceBroadcast {
-    const b = client.createVoiceBroadcast();
-    b.playConvertedStream(
-      new Prism.FFmpeg({
-        args: [
-          "-analyzeduration",
-          "0",
-          "-loglevel",
-          "0",
-          "-f",
-          "s16le",
-          "-ar",
-          "44100",
-          "-ac",
-          "2",
-          "-acodec",
-          "pcm_s16le",
-          "-i",
-          config.mpd.streamFile,
-          "-analyzeduration",
-          "0",
-          "-loglevel",
-          "0",
-          "-f",
-          "s16le",
-          "-ar",
-          "48000",
-          "-ac",
-          "2",
-          "-acodec",
-          "pcm_s16le"
-        ]
-      })
-    );
+    const b = client.voice?.createBroadcast();
+    const args = [
+      "-analyzeduration",
+      "0",
+      "-loglevel",
+      "0",
+      "-f",
+      "s16le",
+      "-ar",
+      "44100",
+      "-ac",
+      "2",
+      "-i",
+      config.mpd.streamFile,
+      "-analyzeduration",
+      "0",
+      "-loglevel",
+      "0",
+      "-f",
+      "s16le",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+    ];
+    const transcoder = new Prism.FFmpeg({
+      args,
+    });
+    transcoder.on("error", console.warn);
+    if (!b) throw "cannot broadcast";
+    b.play(transcoder, {
+      type: "converted",
+    });
+    b.on("end", () => console.log("?"));
     b.on("error", console.log);
     b.on("warn", console.log);
     return b;
@@ -147,22 +149,22 @@ class Dispatch {
     try {
       // Update presence
       if (s === null) {
-        client.user.setActivity("Nothing", { type: "LISTENING" });
+        client.user?.setActivity("Nothing", { type: "LISTENING" });
       } else {
-        client.user.setActivity(
+        client.user?.setActivity(
           (!s.playing ? "[paused] " : "") +
             s.artist +
             " - " +
             s.title +
             " | mpd!np",
           {
-            type: "LISTENING"
+            type: "PLAYING",
           }
         );
       }
       // Update voice connections
       if (s === null || !s.playing) {
-        this.connections.forEach(v => {
+        this.connections.forEach((v) => {
           v.disconnect();
         });
         this.broadcast = null;
@@ -177,7 +179,9 @@ class Dispatch {
             if (this.connections.has(g)) continue;
             console.log(v.name);
             const c = await v.join();
-            c.playBroadcast(b);
+            const disp = c.play(b);
+            disp.on("debug", console.log);
+            disp.on("start", () => console.log("!"));
 
             this.connections.set(g, c);
           } catch (e) {
@@ -192,20 +196,25 @@ class Dispatch {
   }
 }
 
-client.login(config.discord.token).then(async () => {
-  if (client.user.username !== "MPDStream") {
-    await client.user.setUsername("MPDStream");
-    await client.user.setAvatar(
-      "https://pre00.deviantart.net/e649/th/pre/f/2009/175/0/0/suwako_sip_by_kouotsu.png"
-    );
-  }
-  const alwaysJoin = config.discord.alwaysJoin.map(
-    id => client.channels.get(id) as Discord.VoiceChannel
-  );
-  const f = new Dispatch(alwaysJoin);
+client
+  .login(config.discord.token)
+  .then(async () => {
+    if (client.user?.username !== "KagamiStream") {
+      await client.user?.setUsername("KagamiStream");
+      await client.user?.setAvatar(
+        "https://i.pinimg.com/736x/4c/07/7d/4c077d1c329441826a49acb33484e49b.jpg"
+      );
+    }
+    const alwaysJoin: Discord.VoiceChannel[] = [];
+    for (const id of config.discord.alwaysJoin) {
+      const c = await client.channels.fetch(id);
+      if (c) alwaysJoin.push(c as Discord.VoiceChannel);
+    }
+    const f = new Dispatch(alwaysJoin);
 
-  client.on("message", f.handleMessage.bind(f));
-}).catch(e => {
-  console.log(e);
-  process.exit(1);
-});
+    client.on("message", f.handleMessage.bind(f));
+  })
+  .catch((e) => {
+    console.log(e);
+    process.exit(1);
+  });

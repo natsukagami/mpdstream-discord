@@ -1,4 +1,4 @@
-import mpd = require("mpd");
+const mpd = require("mpd");
 import { EventEmitter } from "events";
 
 interface MpdConfig {
@@ -15,7 +15,7 @@ export interface Song {
 }
 
 export default class MPD extends EventEmitter {
-  private client: mpd;
+  private client;
 
   constructor(cfg: MpdConfig) {
     super();
